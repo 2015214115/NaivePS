@@ -1189,12 +1189,26 @@ void MainWindow::on_actionRight90_triggered()
     updateRightImage(newPixmap);
 }
 
+/******************************************************************************
+ *                             高通滤波
+ *****************************************************************************/
 void MainWindow::on_actionHighpass_triggered()
 {
-    //TODO 高通滤波
+    QPixmap rightImage = rightPixmapItem->pixmap();
+    QImage newImage = Tools::Highpass_triggered(rightImage.toImage());
+    rightImage.convertFromImage(newImage);
+
+    updateRightImage(rightImage);
 }
 
+/******************************************************************************
+ *                             低通滤波
+ *****************************************************************************/
 void MainWindow::on_actionLowpass_triggered()
 {
-    //TODO 低通滤波
+    QPixmap rightImage = rightPixmapItem->pixmap();
+    QImage newImage = Tools::Lowpass_triggered(rightImage.toImage());
+    rightImage.convertFromImage(newImage);
+
+    updateRightImage(rightImage);
 }

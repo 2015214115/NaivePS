@@ -56,6 +56,8 @@ QImage RGB2HSV(const QImage &origin);
 QImage RGB2HSL(const QImage &origin);
 QImage RGB2CMYK(const QImage &origin);
 QImage Final(const QImage &origin);
+QImage Highpass_triggered(const QImage &origin);
+QImage Lowpass_triggered(const QImage &origin);
 }
 
 

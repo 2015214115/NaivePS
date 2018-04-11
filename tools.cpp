@@ -991,6 +991,118 @@ QImage Tools::RGB2CMYK(const QImage &origin)
 }
 
 
+
+
+
+
+// FFT
+//数组a为输入，数组y为输出，2的power次方为数组的长度
+void fft(const complex<double> a[], complex<double> y[], int power)
+{
+    if(0 == power)
+    {
+        y[0] = a[0];
+        return;
+    }
+    int n = 1 << power;
+    double angle = 2 * PI / n;
+    complex<double> wn(cos(angle), sin(angle));
+    complex<double> w(1, 0);
+    complex<double> *a0 = new complex<double>[n / 2];
+    complex<double> *a1 = new complex<double>[n / 2];
+    complex<double> *y0 = new complex<double>[n / 2];
+    complex<double> *y1 = new complex<double>[n / 2];
+    for(int i = 0; i < n / 2; i ++)
+    {
+        a0[i] = a[2 * i];
+        a1[i] = a[2 * i + 1];
+    }
+    //分开成两个子fft过程
+    fft(a0, y0, power - 1);
+    fft(a1, y1, power - 1);
+    complex<double> u;
+    for(int k = 0; k < n / 2; k++) //蝶形算法
+    {
+        u = w * y1[k];
+        y[k] = y0[k] + u;
+        y[k + n / 2] = y0[k] - u;
+        w = w * wn;
+    }
+    delete[] a0;
+    delete[] a1;
+    delete[] y0;
+    delete[] y1;
+}
+
+
+// IFFT
+//y为输入，a为输出，2的power次方为数组的长度
+void ifft(const complex<double> y[], complex<double> a[], int power)
+{
+    int count = 1 << power;
+    complex<double> *x = new complex<double>[count];
+    memcpy(x, y, sizeof(complex<double>) * count);
+    int i;
+    for(i = 0; i < count; i++)
+        x[i] = complex<double>(x[i].real(), -x[i].imag()); //共轭复数
+
+    fft(x, a, power); //调用快速傅立叶变换算法
+    for(i = 0; i < count; i++)
+        a[i] = complex<double>(a[i].real() / count, -a[i].imag() / count); //共轭复数
+    delete[] x;
+}
+
+
+
+
+
+QImage Tools::Highpass_triggered(const QImage &origin)
+{
+    // 读入图片
+    complex<double> data[];
+    byte *pImageBytes = origin.bits();
+    int depth = origin.depth(); //每个像素的bit数
+    int lineBytes = origin.bytesPerLine(); //每行的字节数
+    int w = origin.width(); //宽
+    int h = origin.height(); //高
+    byte *pByte;
+    int i, j;
+    for(i = 0; i < h; i++)
+    {
+        for(j = 0; j < w; j++)
+        {
+            if(8 == depth) //采用了256色调色板，8位颜色索引
+            {
+                pByte = pImageBytes + i * lineBytes + j;
+                data[i * w + j] = complex<double>( *pByte, 0);
+            }
+            else if(32 == depth)//32位表示，数据格式为0xFFBBGGRR或0xAABBGGRR
+            {
+                pByte = pImageBytes + i * lineBytes + j * 4;
+                //根据RGB模式转化成YIQ色彩模式的方式，取Y作为灰度值
+                byte pixelValue = (byte)(0.299 * (float)pByte[0] + 0.587 * (float)pByte[1]
+                    + 0.114 * (float)pByte[2]);
+                data[i * w + j] = complex<double>( pixelValue, 0);
+            }
+        }
+    }
+
+    // FFT
+
+
+
+
+
+
+
+
+    return newImg;
+}
+QImage Tools::Lowpass_triggered(const QImage &origin);
+
+
+
+
 QImage Tools::Final(const QImage &origin)
 {
     int width  = origin.width()/3;
@@ -1325,3 +1437,6 @@ QImage Tools::Final(const QImage &origin)
 
     return newImg;
 }
+
+
+
