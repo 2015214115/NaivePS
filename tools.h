@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <iostream>
 #include "gaussianblur.h"
+#include "complex"
 
 
 namespace Tools {

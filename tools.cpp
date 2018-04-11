@@ -1,5 +1,6 @@
 #include "tools.h"
 #include "medianfilter.h"
+using namespace std;
 
 #define min2(a,b) (a)<(b)?(a):(a)
 #define min(a,b,c) (min2(a,b))<(c)?(min2(a,b)):(c)
@@ -995,6 +996,78 @@ QImage Tools::RGB2CMYK(const QImage &origin)
 
 
 
+#define PI 3.1415926
+
+void readImage(complex<double> data[], const QImage &srcImage)
+{
+    unsigned char *pImageBytes = srcImage.bits(); //数据首地址
+    int depth = srcImage.depth(); //每个像素的bit数
+    int lineBytes = srcImage.bytesPerLine(); //每行的字节数
+    int w = srcImage.width(); //宽
+    int h = srcImage.height(); //高
+    unsigned char *pByte;
+    //遍历读取每个像素，并转换为灰度值
+    int i, j;
+    for(i = 0; i < h; i++)
+    {
+        for(j = 0; j < w; j++)
+        {
+            if(8 == depth) //采用了256色调色板，8位颜色索引
+            {
+                pByte = pImageBytes + i * lineBytes + j;
+                data[i * w + j] = complex<double>( *pByte, 0);
+            }
+            else if(32 == depth)//32位表示，数据格式为0xFFBBGGRR或0xAABBGGRR
+            {
+                pByte = pImageBytes + i * lineBytes + j * 4;
+                //根据RGB模式转化成YIQ色彩模式的方式，取Y作为灰度值
+                unsigned char pixelValue = (unsigned char)(0.299 * (float)pByte[0] + 0.587 * (float)pByte[1]
+                        + 0.114 * (float)pByte[2]);
+                data[i * w + j] = complex<double>( pixelValue, 0);
+            }
+            else
+            {
+                cout << "invalid format. depth = " << depth << "\n";
+                return;
+            }
+        }
+    }
+}
+
+//coef为比例系数，主要用来调整灰度值以便于观察
+void writeImage(QImage &destImage, const complex<double> data[], double coef)
+{
+    int lineBytes = destImage.bytesPerLine();
+    int depth = destImage.depth();
+    int w = destImage.width();
+    int h = destImage.height();
+    unsigned char *pImageBytes = destImage.bits();
+    unsigned char *pByte;
+    for(int i = 0; i < h; i++)
+    {
+        for(int j = 0; j < w; j++)
+        {
+            double spectral = abs(data[i * w + j]) * coef; //灰度值调整
+            spectral = spectral > 255 ? 255 : spectral;
+            //根据图像格式写数据
+            if(8 == depth)
+            {
+                pByte = pImageBytes + i * lineBytes + j;
+                *pByte = spectral;
+            }
+            else if(32 == depth)
+            {
+                pByte = pImageBytes + i * lineBytes + j * 4;
+                pByte[0] = pByte[1] = pByte[2] = spectral;
+            }
+            else
+            {
+                return;
+            }
+        }
+    }
+}
+
 // FFT
 //数组a为输入，数组y为输出，2的power次方为数组的长度
 void fft(const complex<double> a[], complex<double> y[], int power)
@@ -1052,51 +1125,92 @@ void ifft(const complex<double> y[], complex<double> a[], int power)
     delete[] x;
 }
 
+//宽和高都截取为2的指数倍
+
+void adjustImageSize(QImage &image)
+{
+    int w = 1;
+    int h = 1;
+    int width = image.width();
+    int height = image.height();
+    int wp = 0, hp = 0;
+    while(w * 2 <= width) { w *= 2; wp++; }
+    while(h * 2 <= height) {h *= 2; hp++; }
+    QImage adjustedImage(w, h, image.depth(), image.colorCount(), image.bitPlaneCount());
+    unsigned char *destBytes = adjustedImage.bits();
+    unsigned char *srcBytes = image.bits();
+    int lineBytes = image.bytesPerLine();
+    int bytesPerPixel = image.depth() / 8; //每个象素的字节数
+    for(int i = 0; i < h; i++) //拷贝数据
+    {
+        memcpy(destBytes + i * w * bytesPerPixel, srcBytes + i * lineBytes,
+               sizeof(byte) * w * bytesPerPixel);
+    }
+    image = adjustedImage; //更新图像
+}
 
 
 
 
 QImage Tools::Highpass_triggered(const QImage &origin)
 {
-    // 读入图片
-    complex<double> data[];
-    byte *pImageBytes = origin.bits();
-    int depth = origin.depth(); //每个像素的bit数
-    int lineBytes = origin.bytesPerLine(); //每行的字节数
-    int w = origin.width(); //宽
-    int h = origin.height(); //高
-    byte *pByte;
-    int i, j;
-    for(i = 0; i < h; i++)
+    // FFT
+    complex<double> currentImageData = new complex<double>[w * h];
+    int w = origin.width();
+    int h = origin.height();
+    QImage currentImage = QImage(origin.width(), origin.height(), QImage::Format_RGB888);
+    for(int x=0; x<w; x++)
     {
-        for(j = 0; j < w; j++)
+        for(int y=0; y<h; y++)
         {
-            if(8 == depth) //采用了256色调色板，8位颜色索引
-            {
-                pByte = pImageBytes + i * lineBytes + j;
-                data[i * w + j] = complex<double>( *pByte, 0);
-            }
-            else if(32 == depth)//32位表示，数据格式为0xFFBBGGRR或0xAABBGGRR
-            {
-                pByte = pImageBytes + i * lineBytes + j * 4;
-                //根据RGB模式转化成YIQ色彩模式的方式，取Y作为灰度值
-                byte pixelValue = (byte)(0.299 * (float)pByte[0] + 0.587 * (float)pByte[1]
-                    + 0.114 * (float)pByte[2]);
-                data[i * w + j] = complex<double>( pixelValue, 0);
-            }
+            currentImage.setPixel(x,y, qRgb(QColor(origin.pixel(x,y)).red(),
+                                      QColor(origin.pixel(x,y)).green(),
+                                      QColor(origin.pixel(x,y)).blue()));
         }
     }
-
-    // FFT
-
-
-
-
-
-
-
-
-    return newImg;
+    if(needAdjust) //调整图像的大小为2的幂次以便于快速傅立叶变换
+    {
+        adjustImageSize(currentImage); //调整大小
+        needAdjust = false;
+        readImage(currentImageData, currentImage); //读取数据
+    }
+    else if(NULL == currentImageData)
+    {
+        currentImageData = new complex<double>[w * h];
+        readImage(currentImageData, currentImage); //读取数据
+    }
+    w = currentImage.width(); //更新宽和高
+    h = currentImage.height();
+    complex<double> *TD = currentImageData; //当前读取的数据为时域
+    complex<double> *FD = new complex<double>[w * h]; //申请空间保存变换结果
+    int i, j;
+    for(i = 0; i < h; i++) //在x方向上对按行进行快速傅立叶变换
+    {
+        fft(&TD[w * i], &FD[w * i], wp);
+    }
+    memcpy(TD, FD, sizeof(complex<double>) * w * h);
+    complex<double> *columnt = new complex<double>[h];
+    complex<double> *columnf = new complex<double>[h];
+    for(i = 0; i < w; i++) //调整行列数据，在y方向上按列进行快速傅立叶变换
+    {
+        for(j = 0; j < h; j++)
+        {
+            columnt[j] = TD[j * w + i];
+        }
+        fft(columnt, columnf, hp);
+        for(j = 0; j < h; j++)
+        {
+            FD[j * w + i] = columnf[j];
+        }
+    }
+    delete[] columnt;
+    delete[] columnf;
+    writeImage(currentImage, FD, 0.02); //写入数据
+    delete[] currentImageData;
+    currentImageData = FD;
+    pDispLabel->setPixmap(QPixmap(currentImage));
+    delete[] currentImageData;
+    return currentImage;
 }
 QImage Tools::Lowpass_triggered(const QImage &origin);
 
